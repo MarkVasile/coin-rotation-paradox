@@ -1,7 +1,6 @@
 from inspect import CO_ITERABLE_COROUTINE
 from colorama import Fore, Back
 from math import cos, sin
-from manim.utils.paths import spiral_path
 from numpy import arccos, arcsin
 from manim import *
 
@@ -9,6 +8,105 @@ CENTER_X = 3 * PI * LEFT
 CENTER_Y = 3 * DOWN
 CIRCLE_B_CENTER = CENTER_X + CENTER_Y
 
+##########################################################################
+# Class Rope
+# A simple rope implementation quite specific to our exercise here,
+# I'll work on cleaning it up and making it generic later.
+##########################################################################
+class Rope:
+    def __init__(self, radius):
+        self.circle_radius = radius
+
+    def rope(self, x, y, z, t, unrolling):
+        # We receive (xy) from [-9,0] counter-clockwise back to [-9,0] and t between 0 and 1.
+        qx = (x + 3 * PI)/3
+        qy = y/3 + 1
+        lx = arccos(qx) # --> PI/2 --> PI --> PI/2 --> 0 --> PI/2
+        ly = arcsin(qy) # --> PI/2 --> 0 --> -PI/2 --> 0 --> PI/2
+
+        # Compute the central angle theta subtended by the arc A~B for A(PI/2, 0) and B(xy).
+        if lx >= PI/2 and ly > 0:
+            theta = lx - PI/2 # quadrant = 1
+        elif lx >= PI/2 and ly <= 0:
+            theta = PI/2 - ly # quadrant = 2
+        elif lx < PI/2 and ly < 0:
+            theta = 3 * PI/2 + ly # quadrant = 3
+        else:
+            theta = 3 * PI/2 + ly # quadrant = 4
+
+        # The idea is to keep the B(xy) point at the right distance from the current point of contact with the circle,
+        # which we can interpolate using "t" --> alpha is the angle at the point of contact.
+        if (unrolling):
+            alpha = -1 * interpolate(theta, 2*PI, t)
+        else:
+            alpha = -1 * interpolate(2*PI, theta, t)
+
+        # At the same time we rotate (xy) counter-clockwise around, keeping it tangential to the point of contact.
+        beta = alpha + theta
+
+        # Coordinates for point of contact C
+        xc = self.circle_radius * sin(alpha) # reversed sin/cos due to having the starting point at the very top of the circle.
+        yc = self.circle_radius * cos(alpha)
+
+        # Coordinates for point Bi on the tangent at C, away from C exactly radius * beta
+        x1 = xc + self.circle_radius * beta * sin(alpha - PI/2) - 3 * PI
+        y1 = yc + self.circle_radius * beta * cos(alpha - PI/2) - 3
+
+        return [x1, y1, z]
+
+
+    def unroll(self, x, y, z, t):
+        return self.rope(x, y, z, t, True)
+
+    def roll(self, x, y, z, t):
+        return self.rope(x, y, z, t, False)
+
+
+##########################################################################
+# Class RollWithRope
+# A custom animation to keep the unit circle at the tip of the rope.
+##########################################################################
+class RollWithRope(Animation):
+    def __init__(
+        self,
+        mobject: Mobject,
+        **kwargs,
+    ):
+        super().__init__(mobject, **kwargs)
+        self.rope = Rope(3)
+
+    def interpolate_submobject(
+        self,
+        submobject: Mobject,
+        starting_submobject: Mobject,
+        alpha: float,
+    ):
+        smooth_alpha = rate_functions.rush_from(alpha)
+        cos_rad = cos(smooth_alpha * 2*PI)
+        sin_rad = sin(smooth_alpha * 2*PI)
+        offset_x = 3*PI
+        offset_y = 0
+
+        def rotate(x, y):
+            origin_x = (x - offset_x)
+            origin_y = (y - offset_y)
+            qx = offset_x + cos_rad * origin_x + sin_rad * origin_y
+            qy = offset_y + -sin_rad * origin_x + cos_rad * origin_y
+            return np.array([qx, qy, 0])
+
+        def action(xyz):
+            translate = self.rope.roll(-3*PI, 0, 0, alpha)
+            ret = rotate(xyz[0], xyz[1]) + translate - [3*PI, 0, 0]
+            return ret
+
+        submobject.become(starting_submobject.copy().apply_function(action))
+        return self
+
+
+##########################################################################
+# Class RollingCircle
+# Our main class which should be invoked in the manim command.
+##########################################################################
 class RollingCircle(MovingCameraScene):
     def construct(self):
         # Create the unit circle, and rotate it -pi/2 -- this will make its starting point xy = [0, -1]
@@ -32,12 +130,15 @@ class RollingCircle(MovingCameraScene):
         line_center2 = Line(Point([-PI, 1, 0]), Point([PI, 1, 0]))
         line_center3 = Line(Point([PI, 1, 0]), Point([3*PI, 1, 0]))
 
+        # Create our rope to visualize circumference rolling and unrolling over the circle
+        rope = Rope(3)
+
         # Create a VGroup to hold the circle, dot, and line
         unit_group = VGroup(circle, dot)
 
         kw = {"run_time": 2 * PI, "path_arc": PI / 2}
 
-        self.camera.frame.move_to([0, -2, 0])
+        self.camera.frame.move_to([0, -5, 0])
         self.camera.frame.scale(3.2)
 
         # Add the group to the scene
@@ -47,81 +148,10 @@ class RollingCircle(MovingCameraScene):
 
         self.wait()
 
-        circle_radius = 3
-        def roll(x, y, z, t):
-            # We receive (xy) from [-9,0] counter-clockwise back to [-9,0] and t between 0 and 1.
-            qx = (x + 3 * PI)/3
-            qy = y/3 + 1
-            lx = arccos(qx) # --> PI/2 --> PI --> PI/2 --> 0 --> PI/2
-            ly = arcsin(qy) # --> PI/2 --> 0 --> -PI/2 --> 0 --> PI/2
-
-            # Compute the central angle theta subtended by the arc A~B for A(PI/2, 0) and B(xy).
-            if lx >= PI/2 and ly > 0:
-                theta = lx - PI/2 # quadrant = 1
-            elif lx >= PI/2 and ly <= 0:
-                theta = PI/2 - ly # quadrant = 2
-            elif lx < PI/2 and ly < 0:
-                theta = 3 * PI/2 + ly # quadrant = 3
-            else:
-                theta = 3 * PI/2 + ly # quadrant = 4
-
-            # The idea is to keep the B(xy) point at the right distance from the current point of contact with the circle,
-            # which we can interpolate using "t" --> alpha is the angle at the point of contact.
-            alpha = -1 * interpolate(2*PI, theta, t)
-
-            # At the same time we rotate (xy) counter-clockwise around, keeping it tangential to the point of contact.
-            beta = alpha + theta
-
-            # Coordinates for point of contact C
-            xc = circle_radius * sin(alpha) # reversed sin/cos due to having the starting point at the very top of the circle.
-            yc = circle_radius * cos(alpha)
-
-            # Coordinates for point Bi on the tangent at C, away from C exactly radius * beta
-            x1 = xc + circle_radius * beta * sin(alpha - PI/2) - 3 * PI
-            y1 = yc + circle_radius * beta * cos(alpha - PI/2) - 3
-
-            return [x1, y1, z]
-
-
-        def unroll(x, y, z, t):
-            # We receive (xy) from [-9,0] counter-clockwise back to [-9,0] and t between 0 and 1.
-            qx = (x + 3 * PI)/3
-            qy = y/3 + 1
-            lx = arccos(qx) # --> PI/2 --> PI --> PI/2 --> 0 --> PI/2
-            ly = arcsin(qy) # --> PI/2 --> 0 --> -PI/2 --> 0 --> PI/2
-
-            # Compute the central angle theta subtended by the arc A~B for A(PI/2, 0) and B(xy).
-            if lx >= PI/2 and ly > 0:
-                theta = lx - PI/2 # quadrant = 1
-            elif lx >= PI/2 and ly <= 0:
-                theta = PI/2 - ly # quadrant = 2
-            elif lx < PI/2 and ly < 0:
-                theta = 3 * PI/2 + ly # quadrant = 3
-            else:
-                theta = 3 * PI/2 + ly # quadrant = 4
-
-            # The idea is to keep the B(xy) point at the right distance from the current point of contact with the circle,
-            # which we can interpolate using "t" --> alpha is the angle at the point of contact.
-            alpha = -1 * interpolate(theta, 2*PI, t)
-
-            # At the same time we rotate (xy) counter-clockwise around, keeping it tangential to the point of contact.
-            beta = alpha + theta
-
-            # Coordinates for point of contact C
-            xc = circle_radius * sin(alpha) # reversed sin/cos due to having the starting point at the very top of the circle.
-            yc = circle_radius * cos(alpha)
-
-            # Coordinates for point Bi on the tangent at C, away from C exactly radius * beta
-            x1 = xc + circle_radius * beta * sin(alpha - PI/2) - 3 * PI
-            y1 = yc + circle_radius * beta * cos(alpha - PI/2) - 3
-
-            return [x1, y1, z]
-
-
         self.play(
             *[
                 Homotopy(
-                    unroll,
+                    rope.unroll,
                     circle3.copy(),
                 )
             ]
@@ -155,22 +185,20 @@ class RollingCircle(MovingCameraScene):
         self.wait()
 
         self.play(
+            self.camera.frame.animate.move_to([0, -6, 0]),
+        )
+
+        self.wait()
+
+        self.play(
             *[
                 Homotopy(
-                    roll,
+                    rope.roll,
                     circle3.copy(),
                 ),
-                MoveAlongPath(
-                    unit_group,
-                    CubicBezier(
-                        np.array([3 * PI, 1, 0]),
-                        np.array([3 * PI, -3 * PI, 0]),
-                        np.array([-4 * PI, 1, 0]),
-                        np.array([-3 * PI, 1, 0]),
-                    ),
-                    rate_functions = linear,
-                ),
-            ]
+                RollWithRope(unit_group),
+            ],
+            run_time=6,
         )
 
         # Wait for the animation to finish
