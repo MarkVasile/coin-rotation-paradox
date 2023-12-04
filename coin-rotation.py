@@ -209,3 +209,104 @@ class RollingCircle(MovingCameraScene):
 
         self.wait()
 
+
+##########################################################################
+# Class RollingCircleInterior
+# Our main class which should be invoked in the manim command.
+##########################################################################
+class RollingCircleInterior(MovingCameraScene):
+    def construct(self):
+        # Create the unit circle, and rotate it pi/2 -- this will make its starting point xy = [0, 1]
+        circle = Circle(radius=1, color=BLUE).rotate(PI/2)
+
+        # Create the radius 3 circle, and rotate it pi/2 -- this makes its starting point up on the top xy = [0, 3]
+        circle3 = Circle(radius=3, color=GREEN).shift(CIRCLE_B_CENTER).rotate(PI/2)
+
+        # Set the unit circle at the initial position on top of circle3
+        circle.move_to(DOWN + LEFT * 3 * PI)
+
+        # Create a dot on the unit circle to visualize its rotation
+        dot = Dot(color=RED)
+        dot.move_to(circle.get_start())
+
+        # Create the three steps for our unit circle to roll on, each equal to 2pi.
+        line_center1 = Line(Point([-3 * PI, -1, 0]), Point([-PI, -1, 0]))
+        line_center2 = Line(Point([-PI, -1, 0]), Point([PI, -1, 0]))
+        line_center3 = Line(Point([PI, -1, 0]), Point([3*PI, -1, 0]))
+
+        # Create a straight line of length 2 * pi * R; where R=3 in our case
+        circumference3 = Line(Point([-3 * PI, 0, 0]), Point([3 * PI, 0, 0]))
+
+        # Create our rope to visualize circumference rolling and unrolling over the circle
+        rope = Rope(3)
+
+        # Create a VGroup to hold the circle, dot, and line
+        unit_group = VGroup(circle, dot)
+
+        self.camera.frame.move_to([0, -5, 0])
+        self.camera.frame.scale(3)
+
+        # Add the group to the scene
+        self.play(
+            Create(VGroup(circle, circle3, dot)),
+        )
+
+        self.wait()
+        self.clear()
+        self.add(unit_group)
+        self.add(circle3)
+
+        self.play(
+            *[
+                Homotopy(rope.unroll, circle3.copy()),
+                FadeToColor(circle3, color=DARK_GRAY),
+            ]
+        )
+        self.add(circumference3)
+
+        self.wait()
+
+        # Move the circle tangentially along the line
+        self.play(
+            MoveAlongPath(circle, line_center1, run_time=2, rate_func=linear),
+            MoveAlongPath(dot, circle, run_time=2, rate_func=linear),
+        )
+        self.wait()
+
+        self.play(
+            MoveAlongPath(circle, line_center2, run_time=2, rate_func=linear),
+            MoveAlongPath(dot, circle, run_time=2, rate_func=linear),
+        )
+        self.wait()
+
+        self.play(
+            MoveAlongPath(circle, line_center3, run_time=2, rate_func=linear),
+            MoveAlongPath(dot, circle, run_time=2, rate_func=linear),
+        )
+        self.wait()
+
+        self.play(
+            self.camera.frame.animate.move_to([0, -6, 0]),
+        )
+
+        self.wait()
+
+        self.clear()
+        self.add(unit_group)
+        self.add(circle3)
+
+        self.play(
+            *[
+                FadeToColor(circle3, GREEN),
+                Homotopy(rope.roll, circle3.copy()),
+                RollWithRope(unit_group),
+            ],
+            run_time=8,
+        )
+        self.wait()
+
+        self.clear()
+        self.add(unit_group)
+        self.add(circle3)
+
+        self.wait()
