@@ -38,8 +38,10 @@ class Rope:
         # which we can interpolate using "t" --> alpha is the angle at the point of contact.
         if (unrolling):
             alpha = -1 * interpolate(theta, 2*PI, t)
+            shrink_factor = interpolate(0.4, 1, t) # just some magic numbers to fix my failed math at x1, y1 down below
         else:
             alpha = -1 * interpolate(2*PI, theta, t)
+            shrink_factor = interpolate(1, 0.4, t)
 
         # At the same time we rotate (xy) counter-clockwise around, keeping it tangential to the point of contact.
         beta = alpha + theta
@@ -49,8 +51,11 @@ class Rope:
         yc = self.circle_radius * cos(alpha)
 
         # Coordinates for point Bi on the tangent at C, away from C exactly radius * beta
-        x1 = xc + self.circle_radius * beta * sin(alpha - PI/2) - 3 * PI
-        y1 = yc + self.circle_radius * beta * cos(alpha - PI/2) - 3
+        # normally we would integrate over the entire rope to maintain length,
+        # but this is an incremental call with 0 <= t <= 1, and I couldn't devise a quick implementation
+        # so cheating is it: shrink_factor
+        x1 = xc + shrink_factor * self.circle_radius * beta * sin(alpha - PI/2) - 3 * PI
+        y1 = yc + shrink_factor * self.circle_radius * beta * cos(alpha - PI/2) - 3
 
         return [x1, y1, z]
 
@@ -122,13 +127,13 @@ class RollingCircle(MovingCameraScene):
         dot = Dot(color=RED)
         dot.move_to(circle.get_start())
 
-        # Create a straight line of length 2 * pi * R; where R=3 in our case
-        circumference3 = Line(Point([-3 * PI, 0, 0]), Point([3 * PI, 0, 0]))
-
         # Create the three steps for our unit circle to roll on, each equal to 2pi.
         line_center1 = Line(Point([-3 * PI, 1, 0]), Point([-PI, 1, 0]))
         line_center2 = Line(Point([-PI, 1, 0]), Point([PI, 1, 0]))
         line_center3 = Line(Point([PI, 1, 0]), Point([3*PI, 1, 0]))
+
+        # Create a straight line of length 2 * pi * R; where R=3 in our case
+        circumference3 = Line(Point([-3 * PI, 0, 0]), Point([3 * PI, 0, 0]))
 
         # Create our rope to visualize circumference rolling and unrolling over the circle
         rope = Rope(3)
@@ -136,10 +141,8 @@ class RollingCircle(MovingCameraScene):
         # Create a VGroup to hold the circle, dot, and line
         unit_group = VGroup(circle, dot)
 
-        kw = {"run_time": 2 * PI, "path_arc": PI / 2}
-
         self.camera.frame.move_to([0, -5, 0])
-        self.camera.frame.scale(3.2)
+        self.camera.frame.scale(3)
 
         # Add the group to the scene
         self.play(
@@ -147,15 +150,17 @@ class RollingCircle(MovingCameraScene):
         )
 
         self.wait()
+        self.clear()
+        self.add(unit_group)
+        self.add(circle3)
 
         self.play(
             *[
-                Homotopy(
-                    rope.unroll,
-                    circle3.copy(),
-                )
+                Homotopy(rope.unroll, circle3.copy()),
+                FadeToColor(circle3, color=DARK_GRAY),
             ]
         )
+        self.add(circumference3)
 
         self.wait()
 
@@ -164,24 +169,18 @@ class RollingCircle(MovingCameraScene):
             MoveAlongPath(circle, line_center1, run_time=2, rate_func=linear),
             MoveAlongPath(dot, circle.reverse_points(), run_time=2, rate_func=linear),
         )
-
-        # Wait for the animation to finish
         self.wait()
 
         self.play(
             MoveAlongPath(circle, line_center2, run_time=2, rate_func=linear),
             MoveAlongPath(dot, circle, run_time=2, rate_func=linear),
         )
-
-        # Wait for the animation to finish
         self.wait()
 
         self.play(
             MoveAlongPath(circle, line_center3, run_time=2, rate_func=linear),
             MoveAlongPath(dot, circle, run_time=2, rate_func=linear),
         )
-
-        # Wait for the animation to finish
         self.wait()
 
         self.play(
@@ -190,17 +189,23 @@ class RollingCircle(MovingCameraScene):
 
         self.wait()
 
+        self.clear()
+        self.add(unit_group)
+        self.add(circle3)
+
         self.play(
             *[
-                Homotopy(
-                    rope.roll,
-                    circle3.copy(),
-                ),
+                FadeToColor(circle3, GREEN),
+                Homotopy(rope.roll, circle3.copy()),
                 RollWithRope(unit_group),
             ],
-            run_time=6,
+            run_time=8,
         )
+        self.wait()
 
-        # Wait for the animation to finish
+        self.clear()
+        self.add(unit_group)
+        self.add(circle3)
+
         self.wait()
 
